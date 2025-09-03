@@ -15,14 +15,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const db_1 = require("./db");
-const app = (0, express_1.default)();
 const config_1 = require("./config");
 const middleware_1 = require("./middleware");
+const utils_1 = require("./utils");
+const cors_1 = __importDefault(require("cors"));
+const app = (0, express_1.default)();
 app.use(express_1.default.json());
+app.use((0, cors_1.default)());
 app.get('/', (req, res) => {
     res.send("Brainly works fine!");
 });
-app.get("/api/v1/singup", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+app.post("/api/v1/signup", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     // add zod validation , hash the password
     const username = req.body.username;
     const password = req.body.password;
@@ -41,7 +44,7 @@ app.get("/api/v1/singup", (req, res) => __awaiter(void 0, void 0, void 0, functi
         });
     }
 }));
-app.post('/api/v1/singin', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+app.post('/api/v1/signin', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const username = req.body.username;
     const password = req.body.password;
     const existingUser = yield db_1.UserModel.findOne({
@@ -65,9 +68,11 @@ app.post('/api/v1/singin', (req, res) => __awaiter(void 0, void 0, void 0, funct
 app.post("/api/v1/content", middleware_1.userMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const link = req.body.link;
     const type = req.body.type;
+    const title = req.body.title;
     yield db_1.ContentModel.create({
         link,
         type,
+        title,
         // @ts-ignore
         userId: req.userId,
         tags: []
@@ -95,6 +100,68 @@ app.delete('/api/v1/content', middleware_1.userMiddleware, (req, res) => __await
     });
     res.json({
         messgage: "content deleted!"
+    });
+}));
+app.post("/api/v1/brain/share", middleware_1.userMiddleware, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const share = req.body.share;
+    if (share) {
+        const existingLink = yield db_1.LinkModel.findOne({
+            //@ts-ignore
+            userId: req.useId
+        });
+        if (existingLink) {
+            res.json({
+                hash: existingLink.hash
+            });
+            return;
+        }
+        const hash = (0, utils_1.random)(10);
+        yield db_1.LinkModel.create({
+            //@ts-ignore
+            userId: req.userId,
+            hash: hash
+        });
+        res.json({
+            message: "/share/" + hash
+        });
+    }
+    else {
+        yield db_1.LinkModel.deleteOne({
+            //@ts-ignore
+            userId: req.userId
+        });
+        res.json({
+            message: "Remove Link!"
+        });
+    }
+}));
+app.get("/api/v1/brain/:shareLink", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const hash = req.params.shareLink;
+    const Link = yield db_1.LinkModel.findOne({
+        hash
+    });
+    if (!Link) {
+        res.status(411).json({
+            message: "Sorry incorrect input"
+        });
+        return;
+    }
+    //useId
+    const content = yield db_1.ContentModel.find({
+        userId: Link.userId
+    });
+    const user = yield db_1.UserModel.findOne({
+        _id: Link.userId
+    });
+    if (!user) {
+        res.status(411).json({
+            Message: "user not found, error should ideally not happen"
+        });
+        return;
+    }
+    res.json({
+        username: user.username,
+        content: content
     });
 }));
 app.listen(3000, () => {
